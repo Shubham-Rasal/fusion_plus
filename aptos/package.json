@@ -1,0 +1,22 @@
+{
+  "name": "aptos",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_OPTIONS='--loader ts-node/esm' ts-node tests/aptos.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aptos": "^1.21.0",
+    "dotenv": "^17.2.1",
+    "ethers": "^6.15.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.5.0",
+    "typescript": "^5.1.6"
+  }
+}
