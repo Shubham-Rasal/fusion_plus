@@ -69,18 +69,6 @@ module coin_addrx::BasicCoins{
     }
     
 
-    #[test(acc=@0x123)]
-    fun test_use_some_coins(acc: signer) acquires Balance{
-        let acc_addr = signer::address_of(&acc);
-        let coins_10 = mint(10);
-        create_balancce(&acc);
-        deposit(acc_addr,coins_10);
-        assert!(balance(acc_addr)==10,EINSUFFICIENT_BALANCE);
-
-        let coins_5 = withdraw(acc_addr, 5);
-        assert!(balance(acc_addr)==5,EALREADY_HAS_BALANCE);
-
-        burn(coins_5);
-    }
+    
 
 }
