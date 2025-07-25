@@ -84,13 +84,13 @@ module token_addr::fusion_token {
         account: &signer,
         amount: u64,
     ) acquires Capabilities {
-        let account_addr = signer::address_of(account);
+        let _account_addr = signer::address_of(account);
         
         // Withdraw coins from the account
         let coins = coin::withdraw<FusionToken>(account, amount);
         
         // Get burn capability
-        let capabilities = borrow_global<Capabilities>(@mytoken_addr);
+        let capabilities = borrow_global<Capabilities>(@token_addr);
         coin::burn(coins, &capabilities.burn_cap);
     }
 

@@ -4,10 +4,13 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-coin_addrx = "b56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923"
+coin_addrx = "_"
+token_addr = "_"
 
 [dev-addresses]
 coin_addrx = "0x42"
+token_addr = "0x43"
+
 
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-framework.git"
