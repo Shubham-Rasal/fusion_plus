@@ -1,141 +1,190 @@
-import { AptosAccount, AptosClient, Types } from "aptos";
+import { AptosAccount, AptosClient, TxnBuilderTypes, BCS } from "aptos";
 import * as dotenv from "dotenv";
+import { ethers } from "ethers";
 
 dotenv.config();
 
 const NODE = "https://fullnode.mainnet.aptoslabs.com/v1";
+// console.log(process.env.PRIVKEY, process.env.ADDR);
+// Use the SAME private key you used with the CLI
 const account = AptosAccount.fromAptosAccountObject({
   privateKeyHex: process.env.PRIVKEY as string,
   address: process.env.ADDR as string,
 });
 
-// Create a second test account for transfer testing
-const testAccount = new AptosAccount();
-
 const client = new AptosClient(NODE);
 
-async function testInitializeToken() {
-  const payload = {
-    type: "entry_function_payload",
-    function: `${process.env.ADDR}::fusion_token::initialize`,
-    type_arguments: [],
-    arguments: ["Fusion Token", "FUSION", 8, true],
-  };
-  await signAndSubmit(payload);
-  console.log("✓ Token initialized successfully");
-}
+async function initialize_swap_ledger() {
+  const SRC_COIN_TYPE =
+    "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_token::FusionToken"; // generic type arg
 
-async function testRegisterAccount(account: AptosAccount) {
   const payload = {
     type: "entry_function_payload",
-    function: `${process.env.ADDR}::fusion_token::register`,
-    type_arguments: [],
+    function:
+      "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::initialize_swap_ledger",
+    type_arguments: [SRC_COIN_TYPE],
     arguments: [],
   };
   await signAndSubmit(payload);
-  console.log(`✓ Account ${account.address()} registered successfully`);
 }
 
-async function testMint(to: string, amount: number) {
+async function anounce_order() {
+  // -------------- user-supplied values --------------------------------
+  const SRC_COIN_TYPE =
+    "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_token::FusionToken"; // generic type arg
+  const srcAmount = 100; // 1 APT if decimals = 6
+  const minDstAmount = 100;
+  const expiresInSecs = 3_600; // 1 hour
+
+  const stringBytes = ethers.toUtf8Bytes("my_secret_password_for_swap_test");
+  const secretHashHex = hexToUint8Array(ethers.keccak256(stringBytes));
+  // --------------------------------------------------------------------
+
+  // Build the txn payload
   const payload = {
     type: "entry_function_payload",
-    function: `${process.env.ADDR}::fusion_token::mint`,
-    type_arguments: [],
-    arguments: [to, amount.toString()],
+    function:
+      "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::announce_order",
+    // 1) generic type arguments
+    type_arguments: [SRC_COIN_TYPE],
+    // 2) the four explicit Move parameters, IN ORDER, all as strings or hex
+    arguments: [
+      srcAmount.toString(), // u64
+      minDstAmount.toString(), // u64
+      expiresInSecs.toString(), // u64
+      secretHashHex, // vector<u8>  (hex string with 0x-prefix)
+    ],
   };
+
+  //   console.log("payload", payload);
+
   await signAndSubmit(payload);
-  console.log(`✓ Minted ${amount} tokens to ${to}`);
 }
 
-async function testTransfer(to: string, amount: number) {
+async function fund_dst_escrow() {
+  // -------------- should be user-supplied values --------------------------------
+  const SRC_COIN_TYPE =
+    "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_token::FusionToken"; // generic type arg
+
+  const dst_amount = 100;
+  const expiration_duration_secs = Math.floor(Date.now() / 1000) + 3600;
+  const secret = ethers.toUtf8Bytes("my_secret_password_for_swap_test");
+  const secret_hash = hexToUint8Array(ethers.keccak256(secret));
+  // --------------------------------------------------------------------
+
+  // Build the txn payload
   const payload = {
     type: "entry_function_payload",
-    function: `${process.env.ADDR}::fusion_token::transfer`,
-    type_arguments: [],
-    arguments: [to, amount.toString()],
+    function:
+      "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::fund_dst_escrow",
+    // 1) generic type arguments
+    type_arguments: [SRC_COIN_TYPE],
+    // 2) the four explicit Move parameters, IN ORDER, all as strings or hex
+    arguments: [
+      dst_amount.toString(),
+      expiration_duration_secs.toString(),
+      secret_hash,
+    ],
   };
+
+  //   console.log("payload", payload);
+
   await signAndSubmit(payload);
-  console.log(`✓ Transferred ${amount} tokens to ${to}`);
 }
 
-async function testBurn(amount: number) {
+async function claim_funds(order_id: number = 2) {
+  // -------------- user-supplied values --------------------------------
+  const SRC_COIN_TYPE =
+    "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_token::FusionToken"; // generic type arg
+
+  const secret = ethers.toUtf8Bytes("my_secret_password_for_swap_test");
+  console.log("secret", secret);
+  //   const secretVec8 = hexToUint8Array(ethers.keccak256(secret));
+  // --------------------------------------------------------------------
+
+  // Build the txn payload
   const payload = {
     type: "entry_function_payload",
-    function: `${process.env.ADDR}::fusion_token::burn`,
-    type_arguments: [],
-    arguments: [amount.toString()],
+    function:
+      "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::claim_funds",
+    // 1) generic type arguments
+    type_arguments: [SRC_COIN_TYPE],
+    // 2) the four explicit Move parameters, IN ORDER, all as strings or hex
+    arguments: [order_id.toString(), secret],
   };
+
+  //   console.log("payload", payload);
+
   await signAndSubmit(payload);
-  console.log(`✓ Burned ${amount} tokens`);
 }
 
-async function getBalance(address: string): Promise<number> {
-  try {
-    const resource = await client.getAccountResource(
-      address,
-      `${process.env.ADDR}::fusion_token::FusionToken`
-    );
-    return parseInt((resource.data as any).value);
-  } catch (e) {
-    console.error("Error getting balance:", e);
-    return 0;
-  }
+async function cancel_swap(order_id: number) {
+  // -------------- user-supplied values --------------------------------
+  const SRC_COIN_TYPE =
+    "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_token::FusionToken"; // generic type arg
+
+
+  // --------------------------------------------------------------------
+
+  // Build the txn payload
+  const payload = {
+    type: "entry_function_payload",
+    function:
+      "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::cancel_swap",
+    // 1) generic type arguments
+    type_arguments: [SRC_COIN_TYPE],
+    // 2) the four explicit Move parameters, IN ORDER, all as strings or hex
+    arguments: [order_id.toString()],
+  };
+
+  //   console.log("payload", payload);
+
+  await signAndSubmit(payload);
 }
 
 async function signAndSubmit(payload: any) {
-  try {
-    const rawTxn = await client.generateTransaction(account.address(), payload);
-    const bcsTxn = AptosClient.generateBCSTransaction(account, rawTxn);
-    const pending = await client.submitSignedBCSTransaction(bcsTxn);
-    await client.waitForTransaction(pending.hash);
-    console.log("Transaction successful:", `https://explorer.aptoslabs.com/txn/${pending.hash}?network=mainnet`);
-  } catch (e) {
-    console.error("Transaction failed:", e);
-    throw e;
-  }
+  console.log("payload", payload);
+  const rawTxn = await client.generateTransaction(account.address(), payload);
+  console.log("rawTxn", rawTxn.payload);
+  const bcsTxn = AptosClient.generateBCSTransaction(account, rawTxn);
+  const pending = await client.submitSignedBCSTransaction(bcsTxn);
+  console.log("pending", pending);
+  await client.waitForTransaction(pending.hash);
+  console.log("✓ Txn:", `https://explorer.aptoslabs.com/txn/${pending.hash}?network=mainnet`);
 }
 
-async function runTests() {
-  try {
-    console.log("Starting Fusion Token tests...");
-    
-    // Initialize the token
-    // await testInitializeToken();
-    
-    // Register accounts
-    // await testRegisterAccount(account);
-    // await testRegisterAccount(testAccount);
-    
-    // Test mint
-    // const mintAmount = 1000;
-    // await testMint(account.address().toString(), mintAmount);
-    
-    // Check balance after mint
-    const balance = await getBalance(account.address().toString());
-    console.log(`Balance after mint: ${balance}`);
-    
-    // Test transfer
-    // const transferAmount = 100;
-    // await testTransfer(testAccount.address().toString(), transferAmount);
-    
-    // // Check balances after transfer
-    // const senderBalance = await getBalance(account.address().toString());
-    // const receiverBalance = await getBalance(testAccount.address().toString());
-    // console.log(`Sender balance after transfer: ${senderBalance}`);
-    // console.log(`Receiver balance after transfer: ${receiverBalance}`);
-    
-    // // Test burn
-    // const burnAmount = 50;
-    // await testBurn(burnAmount);
-    
-    // // Final balance check
-    // const finalBalance = await getBalance(account.address().toString());
-    // console.log(`Final balance: ${finalBalance}`);
-    
-    console.log("All tests completed successfully!");
-  } catch (e) {
-    console.error("Test suite failed:", e);
+(async () => {
+    // await initialize_swap_ledger();
+    // await anounce_order();
+
+  // await fund_dst_escrow();
+
+    // await claim_funds(2);
+
+  // await cancel_swap();
+})();
+
+function hexToUint8Array(hex: string): Uint8Array {
+  if (hex.startsWith("0x")) {
+    hex = hex.substring(2);
   }
+  if (hex.length % 2 !== 0) {
+    throw new Error(
+      "Hex string must have an even number of characters for byte conversion."
+    );
+  }
+  const byteArray = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < byteArray.length; i++) {
+    byteArray[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return byteArray;
 }
 
-runTests();
+
+export {
+    fund_dst_escrow,
+    claim_funds,
+    cancel_swap,
+    anounce_order,
+    initialize_swap_ledger,
+}
