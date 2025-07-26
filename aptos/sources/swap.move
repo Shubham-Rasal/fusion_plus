@@ -296,5 +296,108 @@ module swap_addr::swap {
 
     }
 
-    
+    /// Cancel swap - returns funds to maker if order has expired
+    public entry fun cancel_swap<SrcCoinType>(
+        maker: &signer,
+        order_id: u64
+    ) acquires SwapLedger {
+        let module_addr = @swap_addr;
+        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+        let ledger = borrow_global_mut<SwapLedger>(module_addr);
+
+        assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
+        let order = table::borrow_mut(&mut ledger.orders, order_id);
+
+        // Only the original maker can cancel
+        assert!(signer::address_of(maker) == order.maker_address, EINVALID_MAKER);
+
+        // Order must be expired to cancel
+        assert!(timestamp::now_seconds() >= order.expiration_timestamp_secs, EORDER_NOT_EXPIRED);
+
+        // Order must not have been completed already
+        assert!(vector::is_empty(&order.revealed_secret), EORDER_ALREADY_FILLED_OR_CANCELLED);
+
+        // Verify coin type matches
+        assert!(type_info::type_of<SrcCoinType>() == order.coin_type, EINVALID_COIN_TYPE);
+
+        // Mark as cancelled by setting a dummy revealed secret (non-empty)
+        order.revealed_secret = vector::singleton(0u8);
+
+        // Return funds from escrow to maker
+        let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
+        let escrow_balance = coin::balance<SrcCoinType>(order.escrow_address);
+        
+        if (escrow_balance >= order.amount) {
+            let coins = coin::withdraw<SrcCoinType>(&escrow_signer, order.amount);
+            coin::deposit(order.maker_address, coins);
+        };
+
+        // Return safety deposit to maker
+        // let apt_balance = coin::balance<AptosCoin>(order.escrow_address);
+        // if (apt_balance >= SAFETY_DEPOSIT_AMOUNT) {
+        //     let safety_coins = coin::withdraw<AptosCoin>(&escrow_signer, SAFETY_DEPOSIT_AMOUNT);
+        //     coin::deposit(order.maker_address, safety_coins);
+        // };
+    }
+
+    /// Helper function to check if order is completed
+    #[view]
+    public fun is_order_completed(order_id: u64): bool acquires SwapLedger {
+        let module_addr = @swap_addr;
+        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+        let ledger = borrow_global<SwapLedger>(module_addr);
+        assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
+        let order = table::borrow(&ledger.orders, order_id);
+        !vector::is_empty(&order.revealed_secret)
+    }
+
+    /// Helper function to get revealed secret (if any)
+    #[view]
+    public fun get_revealed_secret(order_id: u64): vector<u8> acquires SwapLedger {
+        let module_addr = @swap_addr;
+        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+        let ledger = borrow_global<SwapLedger>(module_addr);
+        assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
+        let order = table::borrow(&ledger.orders, order_id);
+        order.revealed_secret
+    }
+
+    /// View function to get order details
+    #[view]
+    public fun get_order_details(order_id: u64): OrderMetadata acquires SwapLedger {
+        let module_addr = @swap_addr;
+        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+        let ledger = borrow_global<SwapLedger>(module_addr);
+        assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
+        *table::borrow(&ledger.orders, order_id)
+    }
+
+    // Public accessor functions for OrderMetadata fields
+    public fun order_id(order: &OrderMetadata): u64 {
+        order.id
+    }
+
+    public fun order_maker_address(order: &OrderMetadata): address {
+        order.maker_address
+    }
+
+    public fun order_amount(order: &OrderMetadata): u64 {
+        order.amount
+    }
+
+    public fun order_escrow_address(order: &OrderMetadata): address {
+        order.escrow_address
+    }
+
+    public fun order_min_amount(order: &OrderMetadata): u64 {
+        order.min_amount
+    }
+
+    public fun order_secret_hash(order: &OrderMetadata): &vector<u8> {
+        &order.secret_hash
+    }
+
+    public fun order_resolver_address(order: &OrderMetadata): address {
+        order.resolver_address
+    }
 }
