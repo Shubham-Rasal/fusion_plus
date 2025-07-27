@@ -15,7 +15,7 @@ module sui_fusion_swap::locking {
     const E_KEY_MISMATCH: u64 = 1;
 
     /// Implementation of a generic lock function
-    public fun lock<T: store> (ctx:&mut TxContext, obj: T) : (Locked<T>, Key){
+    public fun lock<T: store + key> (ctx:&mut TxContext, obj: T) : (Locked<T>, Key){
         let key = Key {id: object::new(ctx)};
         let lock = Locked {
             id: object::new(ctx),
@@ -26,7 +26,7 @@ module sui_fusion_swap::locking {
     }
 
     /// Implementation of a generic unlock function
-    public fun unlock<T: store> (locked: Locked<T>, key: Key):T{
+    public fun unlock<T: store + key> (locked: Locked<T>, key: Key):T{
         assert!(locked.key == object::id(&key), E_KEY_MISMATCH);
         let Key { id } = key;
         object::delete(id);
