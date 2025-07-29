@@ -1,4 +1,4 @@
-module swap_addr::swap {
+module fusion_swap_v2_addr::fusion_swap {
     use std::signer;
     use std::vector;
     use std::bcs;
@@ -37,10 +37,11 @@ module swap_addr::swap {
     const EBAD_STATE: u64 = 18;
 
     /// Resource struct representing order metadata
-    public struct OrderMetadata has store, drop, copy {
+    public struct OrderMetadata has store, drop {
         id: u64,
         maker_address: address,
         escrow_address: address,    // Escrow holding maker's source coins
+        escrow_cap: SignerCapability,
         coin_type: TypeInfo,
         amount: u64,
         min_amount: u64,
@@ -57,20 +58,29 @@ module swap_addr::swap {
         signer_cap: SignerCapability,
     }
 
-    /// Initialize the swap ledger
-    public entry fun  initialize_swap_ledger(module_owner: &signer) {
-        let module_owner_addr = signer::address_of(module_owner);
-        
-        assert!(!exists<SwapLedger>(module_owner_addr), ESWAP_LEDGER_ALREADY_EXISTS);
-        
-        let seed = vector::empty<u8>();
-        vector::append(&mut seed, b"swap_seed");
-        let (_, signer_cap) = account::create_resource_account(module_owner, seed);
-        
-        move_to(module_owner, SwapLedger {
-            orders: table::new(),
-            order_id_counter: 0,
-            signer_cap,});
+    /// Helper function to get the ledger address consistently
+    fun get_ledger_address(): address {
+        let seed = b"swap_seed_v3_2";
+        account::create_resource_address(&@fusion_swap_v2_addr, seed)
+    }
+
+    public entry fun initialize_swap_ledger<SrcCoinType>(owner: &signer) {
+        let seed = b"swap_seed_v3_2";                
+        let swap_addr = get_ledger_address();
+
+        if (!exists<SwapLedger>(swap_addr)) {
+            // create the account and publish the ledger under *that* account
+            let (swap_signer, signer_cap) =
+                account::create_resource_account(owner, seed);
+
+            move_to(&swap_signer, SwapLedger {
+                orders: table::new(),
+                order_id_counter: 0,
+                signer_cap,
+            });
+
+            coin::register<SrcCoinType>(&swap_signer);
+        };
     }
 
     /// Phase 1: Announce - Maker creates order with secret hash and deposits funds
@@ -87,7 +97,7 @@ module swap_addr::swap {
         assert!(vector::length(&secret_hash) == 32, EINVALID_SECRET_HASH);
         
         let maker_addr = signer::address_of(maker);
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         
         let ledger = borrow_global_mut<SwapLedger>(module_addr);
@@ -98,7 +108,7 @@ module swap_addr::swap {
         
         // Pre-approve the transfer (maker must have approved the amount)
         // In a real implementation, we'd check allowance here
-        assert!(coin::balance<SrcCoinType>(maker_addr) >= src_amount, EINSUFFICIENT_AMOUNT);
+        // assert!(coin::balance<SrcCoinType>(maker_addr) >= src_amount, EINSUFFICIENT_AMOUNT);
         // assert!(coin::balance<AptosCoin>(maker_addr) >= SAFETY_DEPOSIT_AMOUNT, EINSUFFICIENT_AMOUNT);
         
         // Create escrow addresses
@@ -107,11 +117,8 @@ module swap_addr::swap {
         vector::append(&mut src_seed, bcs::to_bytes(&order_id));
         
         
-        let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
-        let src_escrow_addr = account::create_resource_address(&signer::address_of(&escrow_signer), src_seed);
-        
         // Create and register the source escrow account
-        ensure_escrow_and_register<SrcCoinType>(&ledger.signer_cap, src_escrow_addr, src_seed);
+        let (src_escrow_addr, escrow_cap) = ensure_escrow_and_register<SrcCoinType>(&ledger.signer_cap, src_seed);
         
         // Get type info
         let src_coin_type = type_info::type_of<SrcCoinType>();
@@ -119,18 +126,15 @@ module swap_addr::swap {
         let expiration_timestamp = timestamp::now_seconds() + expiration_duration_secs;
         
         // Withdraw funds from maker and deposit to escrow
-        // let maker_coins = coin::withdraw<SrcCoinType>(maker, src_amount);
-        // coin::deposit(src_escrow_addr, maker_coins);
-        
-        // // Maker's safety deposit in APT
-        // let safety_coins = coin::withdraw<AptosCoin>(maker, SAFETY_DEPOSIT_AMOUNT);
-        // coin::deposit(src_escrow_addr, safety_coins);
+        let maker_coins = coin::withdraw<SrcCoinType>(maker, src_amount);
+        coin::deposit(src_escrow_addr, maker_coins);
         
         // Create order with funded status
         let order = OrderMetadata {
             id: order_id,
             maker_address: maker_addr,
             escrow_address: src_escrow_addr,
+            escrow_cap: escrow_cap,
             coin_type: src_coin_type,
             amount: src_amount,
             min_amount: min_dst_amount,
@@ -143,37 +147,7 @@ module swap_addr::swap {
         table::add(&mut ledger.orders, order_id, order);
     }
 
-    public entry fun fund_src_escrow<SrcCoinType>(
-    maker: &signer,
-    order_id: u64
-    ) acquires SwapLedger {
-        let module_addr = @swap_addr;
-        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
-        let ledger = borrow_global_mut<SwapLedger>(module_addr);
-
-        assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
-        let order = table::borrow_mut(&mut ledger.orders, order_id);
-
-        // Only the original maker may call this.
-        assert!(signer::address_of(maker) == order.maker_address, ENOT_MAKER);
-
-        // Make sure we are using the right coin type.
-        assert!(type_info::type_of<SrcCoinType>() == order.coin_type, EINVALID_COIN_TYPE);
-
-        /* create escrow if needed & register coins */
-        let src_seed = vector::empty<u8>();
-        vector::append(&mut src_seed, b"src_escrow_");
-        vector::append(&mut src_seed, bcs::to_bytes(&order_id));
-        ensure_escrow_and_register<SrcCoinType>(&ledger.signer_cap, order.escrow_address, src_seed);
-
-        /* move the funds */
-        // let maker_coins = coin::withdraw<SrcCoinType>(maker, order.src_amount);
-        // coin::deposit(order.escrow_address, maker_coins);
-
-        /* maker's safety deposit in APT */
-        // let safety_coins  = coin::withdraw<AptosCoin>(maker, SAFETY_DEPOSIT_AMOUNT);
-        // coin::deposit(order.escrow_address, safety_coins);
-    }
+   
 
     public entry fun fund_dst_escrow<CoinType>(
     resolver: &signer,
@@ -181,30 +155,26 @@ module swap_addr::swap {
     expiration_duration_secs: u64,
     secret_hash: vector<u8>
     ) acquires SwapLedger {
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         let ledger = borrow_global_mut<SwapLedger>(module_addr);
 
         let order_id = ledger.order_id_counter;
         ledger.order_id_counter = order_id + 1;
 
-        /* order must not be expired */
-        assert!(timestamp::now_seconds() < expiration_duration_secs, EORDER_EXPIRED);
-
         /* create / register destination escrow if needed */
         let dst_seed = vector::empty<u8>();
         vector::append(&mut dst_seed, b"dst_escrow_");
         vector::append(&mut dst_seed, bcs::to_bytes(&order_id));
 
-        let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
-        let dst_escrow_addr = account::create_resource_address(&signer::address_of(&escrow_signer), dst_seed);
-
         // Create and register the source escrow account
-        ensure_escrow_and_register<CoinType>(&ledger.signer_cap, dst_escrow_addr, dst_seed);
+        let (dst_escrow_addr, escrow_cap) = ensure_escrow_and_register<CoinType>(&ledger.signer_cap,  dst_seed);
         
         // /* move the solver's funds */
-        // let dst_coins = coin::withdraw<CoinType>(resolver, dst_amount);
-        // coin::deposit(dst_escrow_addr, dst_coins);
+        let dst_coins = coin::withdraw<CoinType>(resolver, dst_amount);
+        coin::deposit(dst_escrow_addr, dst_coins);
+
+        let expiration_timestamp = timestamp::now_seconds() + expiration_duration_secs;
 
         // /* solver's safety deposit in APT */
         // let safety = coin::withdraw<AptosCoin>(resolver, SAFETY_DEPOSIT_AMOUNT);
@@ -215,10 +185,11 @@ module swap_addr::swap {
             id: order_id,
             maker_address: @0x0,
             escrow_address: dst_escrow_addr,
+            escrow_cap: escrow_cap,
             coin_type: type_info::type_of<CoinType>(),
             amount: dst_amount,
             min_amount: 0,
-            expiration_timestamp_secs: expiration_duration_secs,
+            expiration_timestamp_secs: expiration_timestamp,
             secret_hash,
             resolver_address: signer::address_of(resolver),
             revealed_secret: vector::empty<u8>(),
@@ -227,40 +198,14 @@ module swap_addr::swap {
         table::add(&mut ledger.orders, order_id, order);
     }
 
-    /// Ensures an escrow account exists and has the necessary coin types registered.
-    /// This function:
-    /// 1. Creates a resource account at the expected escrow address if it doesn't exist
-    /// 2. Registers the specified CoinType in the escrow account if not already registered
-    /// 3. Registers AptosCoin in the escrow account if not already registered (needed for safety deposits)
-    fun ensure_escrow_and_register<CoinType>(
-    signer_cap: &SignerCapability,
-    escrow_addr: address,
-    seed: vector<u8>
-    ) {
-        // If the resource account doesn't exist yet, create it.
-        if (!account::exists_at(escrow_addr)) {
-            let escrow_signer = account::create_signer_with_capability(signer_cap);
-            account::create_resource_account(&escrow_signer, seed);
-        };
-
-        // Make sure CoinType and AptosCoin are registered in there.
-        if (!coin::is_account_registered<CoinType>(escrow_addr)) {
-            let esc = account::create_signer_with_capability(signer_cap);
-            coin::register<CoinType>(&esc);
-        };
-        // if (!coin::is_account_registered<AptosCoin>(escrow_addr)) {
-        //     let esc = account::create_signer_with_capability(signer_cap);
-        //     coin::register<AptosCoin>(&esc);
-        // };
-    }
-
+    
     /// Phase 2: Claim - Resolver provides secret to claim funds from maker's escrow
     public entry fun claim_funds<SrcCoinType>(
         resolver: &signer,
         order_id: u64,
         secret: vector<u8>
     ) acquires SwapLedger {
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         let ledger = borrow_global_mut<SwapLedger>(module_addr);
 
@@ -284,16 +229,16 @@ module swap_addr::swap {
         order.revealed_secret = secret;
 
         // Transfer funds from escrow to resolver
-        let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
+        // let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
+        let escrow_signer = account::create_signer_with_capability(&order.escrow_cap);
         let escrow_balance = coin::balance<SrcCoinType>(order.escrow_address);
         
         // Make sure escrow has sufficient funds
-        // assert!(escrow_balance >= order.amount, EINSUFFICIENT_AMOUNT);
+        assert!(escrow_balance >= order.amount, EINSUFFICIENT_AMOUNT);
 
         // Withdraw from escrow and deposit to resolver
-        // let coins = coin::withdraw<SrcCoinType>(&escrow_signer, order.amount);
-        // coin::deposit(signer::address_of(resolver), coins);
-
+        let coins = coin::withdraw<SrcCoinType>(&escrow_signer, order.amount);
+        coin::deposit(signer::address_of(resolver), coins);
     }
 
     /// Cancel swap - returns funds to maker if order has expired
@@ -301,18 +246,15 @@ module swap_addr::swap {
         maker: &signer,
         order_id: u64
     ) acquires SwapLedger {
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         let ledger = borrow_global_mut<SwapLedger>(module_addr);
 
         assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
         let order = table::borrow_mut(&mut ledger.orders, order_id);
 
-        // Only the original maker can cancel
-        assert!(signer::address_of(maker) == order.maker_address, EINVALID_MAKER);
-
         // Order must be expired to cancel
-        assert!(timestamp::now_seconds() >= order.expiration_timestamp_secs, EORDER_NOT_EXPIRED);
+        // assert!(timestamp::now_seconds() >= order.expiration_timestamp_secs, EORDER_NOT_EXPIRED);
 
         // Order must not have been completed already
         assert!(vector::is_empty(&order.revealed_secret), EORDER_ALREADY_FILLED_OR_CANCELLED);
@@ -324,7 +266,7 @@ module swap_addr::swap {
         order.revealed_secret = vector::singleton(0u8);
 
         // Return funds from escrow to maker
-        let escrow_signer = account::create_signer_with_capability(&ledger.signer_cap);
+        let escrow_signer = account::create_signer_with_capability(&order.escrow_cap);
         let escrow_balance = coin::balance<SrcCoinType>(order.escrow_address);
         
         if (escrow_balance >= order.amount) {
@@ -340,10 +282,37 @@ module swap_addr::swap {
         // };
     }
 
+    fun ensure_escrow_and_register<CoinType>(
+    parent_cap: &SignerCapability,
+    seed: vector<u8>
+): (address, SignerCapability) {
+    // signer for the parent (swap) account
+    let parent_signer = account::create_signer_with_capability(parent_cap);
+
+    // (1) Create the escrow resource account _once_
+    let (escrow_signer, escrow_cap) =
+        account::create_resource_account(&parent_signer, seed);
+
+    let escrow_addr = signer::address_of(&escrow_signer);
+
+    // (2) Register SrcCoinType inside the escrow account
+    if (!coin::is_account_registered<CoinType>(escrow_addr)) {
+        coin::register<CoinType>(&escrow_signer);      
+    };
+
+    // (optional) register AptosCoin too
+    // if (!coin::is_account_registered<AptosCoin>(escrow_addr)) {
+    //     coin::register<AptosCoin>(&escrow_signer);
+    // };
+
+    (escrow_addr, escrow_cap)
+}
+
+
     /// Helper function to check if order is completed
     #[view]
     public fun is_order_completed(order_id: u64): bool acquires SwapLedger {
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         let ledger = borrow_global<SwapLedger>(module_addr);
         assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
@@ -354,22 +323,51 @@ module swap_addr::swap {
     /// Helper function to get revealed secret (if any)
     #[view]
     public fun get_revealed_secret(order_id: u64): vector<u8> acquires SwapLedger {
-        let module_addr = @swap_addr;
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
         let ledger = borrow_global<SwapLedger>(module_addr);
         assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
         let order = table::borrow(&ledger.orders, order_id);
         order.revealed_secret
     }
+    
 
-    /// View function to get order details
+    public struct OrderView has store, drop, copy {
+        id: u64,
+        maker_address: address,
+        escrow_address: address,
+        coin_type: TypeInfo,
+        amount: u64,
+        min_amount: u64,
+        expiration_timestamp_secs: u64,
+        secret_hash: vector<u8>,
+        resolver_address: address,
+        revealed_secret: vector<u8>,
+    }
+
     #[view]
-    public fun get_order_details(order_id: u64): OrderMetadata acquires SwapLedger {
-        let module_addr = @swap_addr;
+    public fun get_order_details(order_id: u64): OrderView acquires SwapLedger {
+        let module_addr = get_ledger_address();
         assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+
         let ledger = borrow_global<SwapLedger>(module_addr);
         assert!(table::contains(&ledger.orders, order_id), EORDER_DOES_NOT_EXIST);
-        *table::borrow(&ledger.orders, order_id)
+
+        // borrow without mutating
+        let order_ref = table::borrow(&ledger.orders, order_id);
+
+        OrderView {
+            id: order_ref.id,
+            maker_address: order_ref.maker_address,
+            escrow_address: order_ref.escrow_address,
+            coin_type: order_ref.coin_type,
+            amount: order_ref.amount,
+            min_amount: order_ref.min_amount,
+            expiration_timestamp_secs: order_ref.expiration_timestamp_secs,
+            secret_hash: order_ref.secret_hash,
+            resolver_address: order_ref.resolver_address,
+            revealed_secret: order_ref.revealed_secret,
+        }
     }
 
     // Public accessor functions for OrderMetadata fields
