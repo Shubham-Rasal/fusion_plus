@@ -1,5 +1,7 @@
 module sui_fusion_swap::escrow {
     use sui_fusion_swap::locking::Key;
+    use sui_fusion_swap::basic_token::Balance;
+    use sui::event;
 
     /// Escrow Abstraction Struct
     public struct Escrow<T: store+key> has store, key {
@@ -9,6 +11,11 @@ module sui_fusion_swap::escrow {
         recipient_id: address,
         obj: sui_fusion_swap::locking::Locked<T>,
         timelock: u64
+    }
+
+    public struct EscrowCreated has drop, copy {
+    /// The creator of the locked object.
+    creator: address,
     }
 
     /// Error codes
@@ -24,8 +31,10 @@ module sui_fusion_swap::escrow {
     ) {
         let (locked, key) = sui_fusion_swap::locking::lock(ctx, obj);
         
+        let escrow_id = sui::object::new(ctx);
+
         let escrow = Escrow {
-            id: sui::object::new(ctx),
+            id: escrow_id,
             depositor_id,
             depositor_key: key,
             recipient_id,
@@ -36,6 +45,11 @@ module sui_fusion_swap::escrow {
         sui::transfer::transfer(escrow, depositor_id);
 
         // Emit an event that the escrow has been created
+        let event = EscrowCreated {            
+            creator: tx_context::sender(ctx)
+        };
+        event::emit(event)
+
     }
 
     public fun claim_escrow<T: store+key> (
@@ -68,4 +82,18 @@ module sui_fusion_swap::escrow {
 
         depositor_key
     }
+
+    public fun create_escrow_for_basic_token(ctx:&mut TxContext,
+        depositor_id: address,
+        recipient_id: address,
+        obj: Balance,
+        timelock: u64) {
+            create_escrow(ctx, depositor_id, recipient_id, obj, timelock)
+        }
+
+    public fun claim_escrow_for_basic_token(ctx: &mut TxContext,
+        escrow: Escrow<Balance>,
+        recipient_key: Key): Key {
+            claim_escrow(ctx, escrow, recipient_key)
+        }
 }

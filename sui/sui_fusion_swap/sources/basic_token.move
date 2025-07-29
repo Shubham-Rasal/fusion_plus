@@ -1,11 +1,11 @@
 module sui_fusion_swap::basic_token {
     /// Coin Abstraction Struct
-    public struct BasicToken has store {
+    public struct BasicToken has store{
         value: u64,
     }
 
     /// Coin Access Abstraction Struct
-    public struct Balance has key {
+    public struct Balance has key,store {
         id: sui::object::UID,
         coins: BasicToken
     }
