@@ -371,6 +371,15 @@ module fusion_swap_v2_addr::fusion_swap {
     }
 
     // Public accessor functions for OrderMetadata fields
+
+    #[view] 
+    public fun get_current_order_id(): u64 acquires SwapLedger {
+        let module_addr = get_ledger_address();
+        assert!(exists<SwapLedger>(module_addr), ESWAP_LEDGER_DOES_NOT_EXIST);
+        let ledger = borrow_global<SwapLedger>(module_addr);
+        ledger.order_id_counter
+    }
+
     public fun order_id(order: &OrderMetadata): u64 {
         order.id
     }
