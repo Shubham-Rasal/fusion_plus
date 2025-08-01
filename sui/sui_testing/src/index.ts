@@ -1,5 +1,6 @@
 // index.ts
 import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
+import { createBalance } from './interaction';
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -16,4 +17,6 @@ async function getNetworkStatus() {
     console.log(currentEpoch)
 }
 
-getNetworkStatus();
+// getNetworkStatus();
+
+createBalance();

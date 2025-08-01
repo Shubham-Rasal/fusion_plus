@@ -2,6 +2,7 @@ module sui_fusion_swap::escrow {
     use sui_fusion_swap::locking::Key;
     use sui_fusion_swap::basic_token::Balance;
     use sui::event;
+    use sui::coin::Coin;
 
     /// Escrow Abstraction Struct
     public struct Escrow<T: store+key> has store, key {
@@ -93,6 +94,16 @@ module sui_fusion_swap::escrow {
 
     public fun claim_escrow_for_basic_token(ctx: &mut TxContext,
         escrow: Escrow<Balance>,
+        recipient_key: Key): Key {
+            claim_escrow(ctx, escrow, recipient_key)
+        }
+
+    public fun create_escrow_for_coin(ctx:&mut TxContext, depositor_id:address, recipient_id:address, obj:Coin<u64>,timelock:u64){
+        create_escrow(ctx, depositor_id, recipient_id, obj, timelock)
+    }
+
+    public fun claim_escrow_for_coin(ctx: &mut TxContext,
+        escrow: Escrow<Coin<u64>>,
         recipient_key: Key): Key {
             claim_escrow(ctx, escrow, recipient_key)
         }
