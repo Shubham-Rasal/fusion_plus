@@ -5,11 +5,6 @@ import type { DappConfig } from "@aptos-labs/wallet-adapter-react";
 import type { PropsWithChildren } from "react";
 import { Network } from "@aptos-labs/ts-sdk";
 import { toast } from "sonner";
-const searchParams =
-  typeof window !== "undefined"
-    ? new URL(window.location.href).searchParams
-    : undefined;
-// const deriveWalletsFrom = searchParams?.get("deriveWalletsFrom")?.split(",");
 
 
 let dappImageURI: string | undefined;

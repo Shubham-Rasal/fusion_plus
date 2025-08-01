@@ -9,6 +9,7 @@ import type { TokenBalance } from "@/lib/wallet"
 import { useAptosWallet } from "@/lib/aptosWallet"
 import type { AptosTokenBalance } from "@/lib/aptosWallet"
 import { AptosWalletSelector } from "@/components/AptosWalletSelector"
+import { SwapProgressDialog } from "@/components/SwapProgressDialog"
 
 export default function SwapComponent() {
   const {
@@ -27,12 +28,12 @@ export default function SwapComponent() {
 
   const [fromToken, setFromToken] = useState<TokenBalance | null>(null)
   const [toToken, setToToken] = useState<AptosTokenBalance | null>(null)
-  const [fromAmount, setFromAmount] = useState("0.000486")
+  const [fromAmount, setFromAmount] = useState("0.00486")
   const [toAmount, setToAmount] = useState("0")
-  const [isSwapping, setIsSwapping] = useState(false)
   const [activeTab, setActiveTab] = useState<"swap" | "limit">("swap")
   const [showFromDropdown, setShowFromDropdown] = useState(false)
   const [showToDropdown, setShowToDropdown] = useState(false)
+  const [showSwapDialog, setShowSwapDialog] = useState(false)
 
   const fromDropdownRef = useRef<HTMLDivElement>(null)
   const toDropdownRef = useRef<HTMLDivElement>(null)
@@ -50,10 +51,10 @@ export default function SwapComponent() {
         setFromToken(usdcToken);
       }
 
-      // Set FUSION as default to token (from Aptos)
-      const fusionToken = aptosTokens.find(token => token.symbol === 'FUSION');
-      if (fusionToken) {
-        setToToken(fusionToken);
+      // Set APT as default to token (from Aptos)
+      const aptToken = aptosTokens.find(token => token.symbol === 'APT');
+      if (aptToken) {
+        setToToken(aptToken);
       }
     }
   }, [currentTokens, aptosTokens]);
@@ -86,12 +87,24 @@ export default function SwapComponent() {
 
   const handleSwap = async () => {
     if (!fromAmount || !toAmount || !isConnected) return
-    setIsSwapping(true)
-    setTimeout(() => {
-      setIsSwapping(false)
-      setFromAmount("")
-      setToAmount("")
-    }, 3000)
+    setShowSwapDialog(true)
+  }
+
+  const handleSwapConfirm = async () => {
+    // This is where the actual swap logic would go
+    // For now, we'll just simulate the process
+    console.log('Starting swap process...')
+    
+    // In a real implementation, you would:
+    // 1. Create source escrow
+    // 2. Deposit funds to source escrow
+    // 3. Create destination escrow
+    // 4. Deposit funds to destination escrow
+    // 5. Share secrets between chains
+    // 6. Complete the swap
+    
+    // For demo purposes, we'll just wait a bit
+    await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
   const handleFromAmountChange = (value: string) => {
@@ -347,7 +360,7 @@ export default function SwapComponent() {
                   </Button>
                   <div className="text-xs text-gray-500">on Aptos</div>
 
-                  {/* To Token Dropdown - Only APT and FUSION tokens */}
+                  {/* To Token Dropdown - APT and FUSION tokens */}
                   {showToDropdown && (
                     <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-10">
                       <div className="p-2">
@@ -404,7 +417,7 @@ export default function SwapComponent() {
           {/* Swap Button */}
           <Button
             onClick={handleSwap}
-            disabled={isSwapDisabled || isSwapping}
+            disabled={isSwapDisabled}
             className={cn(
               "w-full h-14 text-base font-medium rounded-2xl transition-all duration-200",
               isSwapDisabled
@@ -412,12 +425,7 @@ export default function SwapComponent() {
                 : "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-lg hover:shadow-blue-500/25",
             )}
           >
-            {isSwapping ? (
-              <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Swapping...
-              </div>
-            ) : isSwapDisabled ? (
+            {isSwapDisabled ? (
               !isConnected ? "Connect Wallet" : 
               !aptosConnected ? "Connect Aptos Wallet" :
               !fromToken || !toToken ? "Select tokens" :
@@ -428,6 +436,17 @@ export default function SwapComponent() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Swap Progress Dialog */}
+      <SwapProgressDialog
+        open={showSwapDialog}
+        onOpenChange={setShowSwapDialog}
+        fromToken={fromToken}
+        toToken={toToken}
+        fromAmount={fromAmount}
+        toAmount={toAmount}
+        onConfirm={handleSwapConfirm}
+      />
     </div>
   )
 }

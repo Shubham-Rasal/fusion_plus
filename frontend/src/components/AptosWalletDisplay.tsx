@@ -36,6 +36,10 @@ export function AptosWalletDisplay() {
   const aptTokens = getAptosTokens();
   const aptToken = aptTokens.find(token => token.symbol === 'APT');
   const aptBalance = aptToken?.formattedBalance || "0";
+  
+  console.log('AptosWalletDisplay - APT tokens:', aptTokens);
+  console.log('AptosWalletDisplay - APT token:', aptToken);
+  console.log('AptosWalletDisplay - APT balance:', aptBalance);
 
   if (!connected) {
     return <AptosWalletSelector />;

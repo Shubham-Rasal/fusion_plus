@@ -12,8 +12,6 @@ const account = AptosAccount.fromAptosAccountObject({
   address: process.env.ADDR as string,
 });
 
-console.log(account.address())
-
 const client = new AptosClient(NODE);
 
 async function initialize_swap_ledger() {
@@ -144,17 +142,6 @@ async function cancel_swap(order_id: number) {
   await signAndSubmit(payload);
 }
 
-async function getCurrentOrderId(): Promise<number> {
-  const payload = {
-    function: "0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923::fusion_swap::get_current_order_id",
-    type_arguments: [],
-    arguments: []
-  };
-  
-  const response = await client.view(payload);
-  return parseInt(response[0] as string);
-}
-
 async function signAndSubmit(payload: any) {
   console.log("payload", payload);
   const rawTxn = await client.generateTransaction(account.address(), payload);
@@ -166,16 +153,6 @@ async function signAndSubmit(payload: any) {
   console.log("✓ Txn:", `https://explorer.aptoslabs.com/txn/${pending.hash}?network=mainnet`);
 }
 
-(async () => {
-    // await initialize_swap_ledger();
-    // await anounce_order();
-
-  // await fund_dst_escrow();
-
-    // await claim_funds(await getCurrentOrderId() - 1);
-
-  // await cancel_swap();
-})();
 
 function hexToUint8Array(hex: string): Uint8Array {
   if (hex.startsWith("0x")) {
