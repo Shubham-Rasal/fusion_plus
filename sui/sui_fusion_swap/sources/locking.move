@@ -51,7 +51,7 @@ module sui_fusion_swap::locking {
     #[test]
     fun test_lock_unlock() {
         let mut ts = ts::begin(@0xA);
-        let basic_token = mint_basic_token();
+        let basic_token = create_balance(&mut ts);
 
         let (locked, key) = lock(ts::ctx(&mut ts),basic_token);
 

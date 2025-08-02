@@ -50,7 +50,6 @@ module sui_fusion_swap::escrow {
             creator: tx_context::sender(ctx)
         };
         event::emit(event)
-
     }
 
     public fun claim_escrow<T: store+key> (

@@ -1,5 +1,4 @@
 module sui_fusion_swap::basic_token {
-    use std::debug;
     /// Coin Abstraction Struct
     public struct BasicToken has store{
         value: u64,
@@ -28,7 +27,7 @@ module sui_fusion_swap::basic_token {
     }
 
     /// Create a balance for the account
-    public fun create_balance(ctx:&mut TxContext) : Balance {
+    public fun create_balance(ctx:&mut TxContext) {
         let acc_addr = tx_context::sender(ctx);
 
         /// Perform checks at a higher level
@@ -36,15 +35,13 @@ module sui_fusion_swap::basic_token {
 
         let zero_token = BasicToken{value: 0};
         let id = sui::object::new(ctx);
-        debug::print(&id);
+        
         let bal_obj = Balance {
             id: id,
             coins: zero_token,
         };
         
-        
-        // transfer::transfer(bal_obj, acc_addr)
-        bal_obj
+        transfer::transfer(bal_obj, acc_addr)
     }
 
     fun set_balance(bal_obj:&mut Balance, amount: u64) {
