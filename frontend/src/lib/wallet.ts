@@ -133,33 +133,54 @@ export function useWallet() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const [selectedChain, setSelectedChain] = useState<string>("polygon");
+  const [selectedChain, setSelectedChain] = useState<string>("ethereum");
   const [tokenBalances, setTokenBalances] = useState<Record<string, TokenBalance[]>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Auto-detect and set the correct chain based on current chainId
+  useEffect(() => {
+    if (chainId) {
+      console.log('Current chainId:', chainId);
+      const chainConfig = Object.values(CHAIN_CONFIGS).find(chain => chain.chainId === chainId);
+      console.log('Found chain config:', chainConfig);
+      if (chainConfig && chainConfig.id !== selectedChain) {
+        console.log('Switching to chain:', chainConfig.id);
+        setSelectedChain(chainConfig.id);
+      }
+    }
+  }, [chainId, selectedChain]);
 
   // Get current chain config
   const currentChainConfig = CHAIN_CONFIGS[selectedChain];
 
-  // Fetch native token balance
+  // Fetch native token balance for current chain
   const { data: nativeBalance } = useBalance({
     address,
+    chainId: currentChainConfig?.chainId,
   });
 
-  // Fetch USDC balance
+  // Fetch USDC balance for current chain
   const { data: usdcBalance } = useBalance({
     address,
     token: currentChainConfig?.tokens.find(t => t.symbol === 'USDC')?.address as `0x${string}`,
+    chainId: currentChainConfig?.chainId,
   });
 
-  // Fetch USDT balance
+  // Fetch USDT balance for current chain
   const { data: usdtBalance } = useBalance({
     address,
     token: currentChainConfig?.tokens.find(t => t.symbol === 'USDT')?.address as `0x${string}`,
+    chainId: currentChainConfig?.chainId,
   });
 
   // Update token balances when balances change
   useEffect(() => {
     if (!currentChainConfig || !address) return;
+
+    console.log('Updating balances for chain:', selectedChain);
+    console.log('Native balance:', nativeBalance);
+    console.log('USDC balance:', usdcBalance);
+    console.log('USDT balance:', usdtBalance);
 
     const updatedTokens = currentChainConfig.tokens.map(token => {
       let balance = "0";
@@ -181,6 +202,8 @@ export function useWallet() {
           formattedBalance = formatUnits(usdtBalance.value, token.decimals);
         }
       }
+
+      console.log(`Token ${token.symbol}: balance=${balance}, formatted=${formattedBalance}`);
 
       return {
         ...token,

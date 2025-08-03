@@ -90,7 +90,7 @@ describe("Resolving example", () => {
 
         srcFactory = new EscrowFactory(src.provider, src.escrowFactory);
         dstFactory = new EscrowFactory(dst.provider, dst.escrowFactory);
-
+        5
         // get 1000 USDC for user in SRC chain and approve to LOP
         await srcChainUser.topUpFromDonor(
           config.chain.source.tokens.USDC.address,
@@ -105,7 +105,7 @@ describe("Resolving example", () => {
 
         console.log("got the tokens approved for LOP");
 
-        // get 2000 USDC for resolver in DST chain
+        // get 2000 USDC for resolver in DST chai5n
         srcResolverContract = await Wallet.fromAddress(
           src.resolver,
           src.provider
@@ -226,8 +226,7 @@ describe("Resolving example", () => {
         );
 
         // FUND ESCROW ON APTOS
-    
-        // await aptos.fund_dst_escrow();
+        await aptos.fund_dst_escrow();
     
 
         const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl();
@@ -245,7 +244,7 @@ describe("Resolving example", () => {
         await increaseTime(11);
         // unlock funds on dst chain for user
 
-        // await aptos.claim_funds(5); // unhardcode params
+        await aptos.claim_funds(27); // unhardcode params
 
         // withdraw funds from src chain for resolver
         console.log(
@@ -266,7 +265,22 @@ describe("Resolving example", () => {
           `Withdrew funds for resolver from ${srcEscrowAddress} to ${src.resolver} in tx https://base.blockscout.com/tx/${resolverWithdrawHash}`
         );
 
-        console.log(await getBalances(config.chain.source.tokens.USDC.address, config.chain.destination.tokens.USDC.address))
+        const finalBalances = await getBalances(config.chain.source.tokens.USDC.address, config.chain.destination.tokens.USDC.address);
+        console.log("Final balances:", finalBalances);
+        
+        // Format balances for human readability
+        const formatBalance = (balance: bigint) => {
+          return (Number(balance) / 1_000_000).toFixed(6); // USDC has 6 decimals
+        };
+        
+        console.log("=== FINAL BALANCES (USDC) ===");
+        console.log(`Source Chain (Base):`);
+        console.log(`  User: ${formatBalance(finalBalances.src.user)} USDC`);
+        console.log(`  Resolver: ${formatBalance(finalBalances.src.resolver)} USDC`);
+        console.log(`Destination Chain (Aptos):`);
+        console.log(`  User: ${formatBalance(finalBalances.dst.user)} USDC`);
+        console.log(`  Resolver: ${formatBalance(finalBalances.dst.resolver)} USDC`);
+        console.log("================================");
       
       }
     );
