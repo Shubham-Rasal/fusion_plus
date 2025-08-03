@@ -171,6 +171,19 @@ function hexToUint8Array(hex: string): Uint8Array {
 }
 
 
+(async () => {
+  // await initialize_swap_ledger();
+  await anounce_order();
+
+// await fund_dst_escrow();
+
+  await claim_funds(14);
+
+// await cancel_swap();
+})();
+
+
+
 export {
     fund_dst_escrow,
     claim_funds,
