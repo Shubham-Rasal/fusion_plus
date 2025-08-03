@@ -24,7 +24,7 @@ function App() {
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
               <div className="max-w-4xl mx-auto">
                 <div className="flex justify-between items-center mb-8">
-                  <h1 className="text-3xl font-bold text-gray-900">Fusion Plus Swap</h1>
+                  <h1 className="text-3xl font-bold text-gray-900">MoveIt</h1>
                   <div className="flex items-center gap-3">
                     <AptosWalletDisplay />
                     <ConnectButton />
