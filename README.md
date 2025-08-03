@@ -1,49 +1,97 @@
-# fusion+ protocol
+# Fusion+ Protocol - Aptos Implementation
 
-1inch fusion+ protocol implementation for non-EVM chains
+Aptos implementation of the 1inch Fusion+ protocol for cross-chain atomic swaps between EVM chains and Aptos.
 
-Target chains
+## MoveIt UI
 
-- SUI
-- APTOS
-- ICP
-- TON
+![MoveIt Swap Interface](docs/ui.png)
+*Cross-chain swap interface showing USDC on Base to APT on Aptos*
 
-## Aptos
+![Swap Processing](docs/swap.png)
+*Processing cross-chain swap with step-by-step progress tracking*
 
-Note: compile the contract again after testing for deployment
+![Swap Success](docs/success.png)
+*Successfully completed cross-chain swap with transaction details*
 
+## Overview
 
-# fusion+ protocol
+The protocol uses hash-time-locked contracts (HTLC) with escrow accounts to enable secure cross-chain token swaps.
 
-1inch fusion+ protocol implementation for non-EVM chains
+## Protocol Flow
 
-Target chains
+1. **Order Announcement**: Maker deposits tokens into Aptos escrow with secret hash
+2. **Destination Funding**: Resolver funds destination escrow on target EVM chain
+3. **Claim**: Resolver reveals secret to claim maker's tokens from Aptos escrow
+4. **Completion**: Maker claims resolver's tokens from EVM escrow using revealed secret
 
-- SUI
-- APTOS
-- ICP
-- TON
+## Core Functions
 
-## Aptos
+- [`initialize_swap_ledger`](sources/fusion_swap.move#L67-L80): Setup swap ledger resource account
+- [`announce_order`](sources/fusion_swap.move#L82-L140): Create swap order and escrow account
+- [`fund_dst_escrow`](sources/fusion_swap.move#L142-L185): Fund destination escrow (resolver operation)
+- [`claim_funds`](sources/fusion_swap.move#L188-L230): Claim funds using revealed secret
+- [`cancel_swap`](sources/fusion_swap.move#L232-L270): Cancel expired order and return funds
 
-Note: compile the contract again after testing for deployment
+## Example Transactions
 
+### Deployed Contract
+[Fusion Swap Contract](https://explorer.aptoslabs.com/account/0xb56bbecb1105320f538c98931eb637eb216e977bc4c6b83504c43663f4e6b923/modules/code/fusion_swap?network=mainnet)
 
-## Sui
+### Claim Funds Transaction
+[Claim Funds Example](https://explorer.aptoslabs.com/txn/0xd919b7d7856dbf1aa3a60e295845018ca072426e3a4f04458cc4385d57e57de4/userTxnOverview?network=mainnet)
 
-### Setup
+### Fund Destination Escrow Transaction
+[Fund DST Escrow Example](https://explorer.aptoslabs.com/txn/0xa0d7e09f4f5f4746feb6343646d4e10b551d95ed973b5b216af9f0efa512cad2/balanceChange?network=mainnet)
 
-- For local testing, setup a sui node with `RUST_LOG="off,sui_node=info" sui start --with-faucet --force-regenesis`
-- Also run `npm i ts-node @mysten/sui dotenv`, for testing purposes
-- https://dev.to/goodylili/how-to-use-the-sui-typescript-sdk-2dep - Reference for local Sui node setup, with TS SDK
+## Setup
 
-### Implementation
-First on the EVM chain you have Alice making an escrow account, and putting the token in chain A and locking it
--> Not done by SUI 
+```bash
+cd aptos
+npm install
+```
 
-Then Bob creates an escrow account on chain B and locks the token in chain B there
--> This will be done by the createEscrow function, and this resolver will manage that
+Create `.env`:
+```env
+PRIVKEY=your_private_key_here
+ADDR=your_aptos_address_here
+```
 
-After that Alice can claim the token on chain B and Bob can claim the token on chain A
--> After the escrow account is created, the resolver does the claiming on behalf of Alice
+## Usage
+
+```typescript
+// Initialize ledger
+await initialize_swap_ledger();
+
+// Create order
+const secret = "my_secret_password";
+const secretHash = ethers.keccak256(ethers.toUtf8Bytes(secret));
+await announce_order(100, 100, 3600, secretHash);
+
+// Fund destination escrow
+await fund_dst_escrow(100, expirationTime, secretHash);
+
+// Claim funds
+await claim_funds(orderId, ethers.toUtf8Bytes(secret));
+
+// Cancel expired order
+await cancel_swap(orderId);
+```
+
+## Testing
+
+```bash
+npm test
+```
+
+## Key Data Structures
+
+- [`OrderMetadata`](sources/fusion_swap.move#L35-L48): Order metadata with escrow details and secret hash
+- [`SwapLedger`](sources/fusion_swap.move#L51-L55): Global ledger managing all swap orders
+- [`ensure_escrow_and_register`](sources/fusion_swap.move#L300-L315): Helper function for escrow creation
+
+## Security
+
+- HTLC with secret hashes and timeouts
+- Resource accounts for secure escrow management
+- Keccak256 hash verification
+- Automatic expiration mechanism
