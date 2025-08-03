@@ -26,11 +26,11 @@ The protocol uses hash-time-locked contracts (HTLC) with escrow accounts to enab
 
 ## Core Functions
 
-- [`initialize_swap_ledger`](sources/fusion_swap.move#L67-L80): Setup swap ledger resource account
-- [`announce_order`](sources/fusion_swap.move#L82-L140): Create swap order and escrow account
-- [`fund_dst_escrow`](sources/fusion_swap.move#L142-L185): Fund destination escrow (resolver operation)
-- [`claim_funds`](sources/fusion_swap.move#L188-L230): Claim funds using revealed secret
-- [`cancel_swap`](sources/fusion_swap.move#L232-L270): Cancel expired order and return funds
+- [`initialize_swap_ledger`](aptos/sources/fusion_swap.move#L66-L80): Setup swap ledger resource account
+- [`announce_order`](aptos/sources/fusion_swap.move#L86-L140): Create swap order and escrow account
+- [`fund_dst_escrow`](aptos/sources/fusion_swap.move#L151-L185): Fund destination escrow (resolver operation)
+- [`claim_funds`](aptos/sources/fusion_swap.move#L202-L230): Claim funds using revealed secret
+- [`cancel_swap`](aptos/sources/fusion_swap.move#L244-L270): Cancel expired order and return funds
 
 ## Example Transactions
 
@@ -85,9 +85,9 @@ npm test
 
 ## Key Data Structures
 
-- [`OrderMetadata`](sources/fusion_swap.move#L35-L48): Order metadata with escrow details and secret hash
-- [`SwapLedger`](sources/fusion_swap.move#L51-L55): Global ledger managing all swap orders
-- [`ensure_escrow_and_register`](sources/fusion_swap.move#L300-L315): Helper function for escrow creation
+- [`OrderMetadata`](aptos/sources/fusion_swap.move#L39-L48): Order metadata with escrow details and secret hash
+- [`SwapLedger`](aptos/sources/fusion_swap.move#L54-L55): Global ledger managing all swap orders
+- [`ensure_escrow_and_register`](aptos/sources/fusion_swap.move#L284-L315): Helper function for escrow creation
 
 ## Security
 
