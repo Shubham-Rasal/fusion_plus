@@ -100,6 +100,10 @@ For local testing:
 
 ## Implementation Overview
 
+The Sui implementation is analogous to the APTOS one.
+
+<img width="1080" height="402" alt="diagram-export-8-3-2025-9_16_49-PM" src="https://github.com/user-attachments/assets/9051b3c2-11a1-44aa-acf1-d2a1612a91ab" />
+
 1. **EVM Chain (Chain A):**
    - Alice creates an escrow account, deposits tokens, and locks them on Chain A.
    - _Note: This step is not handled by Sui._
@@ -109,7 +113,22 @@ For local testing:
    - This is performed by the `createEscrow` function, managed by the resolver.
 
 3. **Claiming Tokens:**
+   - The relayer observes the creation of the escrow account on Chain B.
    - After the escrow account is created on Chain B, the resolver claims the tokens on behalf of Alice.
+   - To do this, the `claimEscrow` function is run by the resolver.
    - Subsequently, Bob can claim the tokens on Chain A.
 
-This flow ensures atomic swaps between EVM and Sui chains, with the resolver coordinating the escrow and claim processes.
+This flow ensures atomic swaps between EVM and Sui chains, with the resolver and relayer coordinating the escrow and claim processes.
+
+## Examples
+This is the [example](https://testnet.suivision.xyz/txblock/C8pVfd2gP91H4jWUewEVUfiERuD726ZjoDhbybo7MVn7?tab=Events) of using the escrow creation function on `0x2::sui::sui`
+
+<img width="1919" height="1079" alt="Screenshot_03-Aug_21-11-52_29514" src="https://github.com/user-attachments/assets/5a889780-26e4-46b4-8d4e-e1ef4c8d9c57" />
+
+
+This is the [example](https://testnet.suivision.xyz/txblock/7yT8jtN7cqfAzEnao751ktPJnv14oVwZcDYxRcYrUVrR?tab=Changes) of using the claim escrow function, where the funds have been sent to the client
+
+<img width="1919" height="1079" alt="Screenshot_03-Aug_21-12-35_29847" src="https://github.com/user-attachments/assets/10857e6f-ad1b-4bd1-a7d5-064678977fac" />
+
+
+
