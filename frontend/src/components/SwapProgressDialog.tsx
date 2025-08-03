@@ -28,6 +28,17 @@ interface SwapProgressDialogProps {
   fromAmount: string
   toAmount: string
   onConfirm: () => Promise<void>
+  currentOrder?: {
+    orderHash: string;
+    status: string;
+    stages?: {
+      srcEscrowCreated?: { txHash: string; timestamp: Date };
+      dstEscrowCreated?: { txHash: string; timestamp: Date };
+      securityCheckCompleted?: { timestamp: Date };
+      aptosFundsClaimed?: { txHash: string; timestamp: Date };
+      fundsSentToWallet?: { txHash: string; timestamp: Date };
+    };
+  } | null;
 }
 
 export function SwapProgressDialog({
@@ -37,7 +48,8 @@ export function SwapProgressDialog({
   toToken,
   fromAmount,
   toAmount,
-  onConfirm
+  onConfirm,
+  currentOrder
 }: SwapProgressDialogProps) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -46,83 +58,80 @@ export function SwapProgressDialog({
 
   // Update steps when props change
   useEffect(() => {
-    setSteps([
+    const newSteps: SwapStep[] = [
       {
-        id: 'create-source-escrow',
-        title: 'Creating Source Escrow',
-        description: 'Setting up escrow contract on source chain',
-        status: 'pending'
+        id: 'src-escrow-created',
+        title: 'Source escrow deployed',
+        description: 'Base escrow contract deployed',
+        status: currentOrder?.stages?.srcEscrowCreated ? 'completed' : 'pending',
+        transactionHash: currentOrder?.stages?.srcEscrowCreated?.txHash
       },
       {
-        id: 'deposit-source-funds',
-        title: 'Depositing Funds',
-        description: `Depositing ${fromAmount} ${fromToken?.symbol} to source escrow`,
-        status: 'pending'
+        id: 'dst-escrow-created',
+        title: 'Destination escrow funded',
+        description: 'Aptos escrow funded with tokens',
+        status: currentOrder?.stages?.dstEscrowCreated ? 'completed' : 'pending',
+        transactionHash: currentOrder?.stages?.dstEscrowCreated?.txHash
       },
       {
-        id: 'create-destination-escrow',
-        title: 'Creating Destination Escrow',
-        description: 'Setting up escrow contract on destination chain',
-        status: 'pending'
+        id: 'security-check-completed',
+        title: 'Security time locks completed',
+        description: 'Time lock period completed for security',
+        status: currentOrder?.stages?.securityCheckCompleted ? 'completed' : 'pending'
       },
       {
-        id: 'deposit-destination-funds',
-        title: 'Depositing Destination Funds',
-        description: `Depositing ${toAmount} ${toToken?.symbol} to destination escrow`,
-        status: 'pending'
+        id: 'aptos-funds-claimed',
+        title: 'Funds claimed on Aptos',
+        description: 'Tokens claimed on destination chain',
+        status: currentOrder?.stages?.aptosFundsClaimed ? 'completed' : 'pending',
+        transactionHash: currentOrder?.stages?.aptosFundsClaimed?.txHash
       },
       {
-        id: 'share-secret',
-        title: 'Sharing Secret',
-        description: 'Exchanging cryptographic secrets between chains',
-        status: 'pending'
-      },
-      {
-        id: 'swap-complete',
-        title: 'Swap Complete',
-        description: 'Cross-chain swap successfully completed',
-        status: 'pending'
+        id: 'funds-sent-to-wallet',
+        title: 'Swap completed',
+        description: 'Funds withdrawn from Base escrow',
+        status: currentOrder?.stages?.fundsSentToWallet ? 'completed' : 'pending',
+        transactionHash: currentOrder?.stages?.fundsSentToWallet?.txHash
       }
-    ])
-  }, [fromAmount, toAmount, fromToken?.symbol, toToken?.symbol])
+    ];
+
+    // Update status based on current order status
+    if (currentOrder?.status) {
+      const statusMap: Record<string, number> = {
+        'pending': 0,
+        'src_escrow_created': 1,
+        'dst_escrow_created': 2,
+        'security_check_completed': 3,
+        'aptos_funds_claimed': 4,
+        'funds_sent_to_wallet': 5
+      };
+
+      const currentStepIndex = statusMap[currentOrder.status] || 0;
+      
+      newSteps.forEach((step, index) => {
+        if (index < currentStepIndex) {
+          step.status = 'completed';
+        } else if (index === currentStepIndex && currentOrder.status !== 'funds_sent_to_wallet') {
+          step.status = 'loading';
+        } else if (index > currentStepIndex) {
+          step.status = 'pending';
+        }
+      });
+    }
+
+    setSteps(newSteps);
+  }, [fromToken?.symbol, currentOrder?.status, currentOrder?.stages])
 
   const handleConfirm = async () => {
     setIsConfirming(true)
     setIsProcessing(true)
-    setCurrentStep(0)
     
     try {
       await onConfirm()
-      
-      // Simulate the swap process with realistic delays
-      for (let i = 0; i < steps.length; i++) {
-        setCurrentStep(i)
-        
-        // Update step status to loading
-        setSteps(prev => prev.map((step, index) => 
-          index === i ? { ...step, status: 'loading' as const } : step
-        ))
-        
-        // Simulate processing time (2-4 seconds per step)
-        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000))
-        
-        // Generate mock transaction hash
-        const mockTxHash = `0x${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 10)}`
-        
-        // Update step status to completed
-        setSteps(prev => prev.map((step, index) => 
-          index === i ? { 
-            ...step, 
-            status: 'completed' as const,
-            transactionHash: mockTxHash
-          } : step
-        ))
-      }
-      
-      // Final delay before closing
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
+      // The progress will be updated via WebSocket events from the relayer
+      // Keep dialog open to show real-time progress
     } catch (error) {
+      console.error('Swap confirmation error:', error);
       // Handle error by marking current step as failed
       setSteps(prev => prev.map((step, index) => 
         index === currentStep ? { 
@@ -131,7 +140,6 @@ export function SwapProgressDialog({
           error: error instanceof Error ? error.message : 'Unknown error occurred'
         } : step
       ))
-    } finally {
       setIsProcessing(false)
     }
   }
@@ -149,36 +157,57 @@ export function SwapProgressDialog({
     }
   }
 
-  const getExplorerUrl = (chain: string, txHash: string) => {
-    const chainExplorers: Record<string, string> = {
-      'Ethereum': 'https://etherscan.io',
-      'Polygon': 'https://polygonscan.com',
-      'BSC': 'https://bscscan.com',
-      'Arbitrum': 'https://arbiscan.io',
-      'Optimism': 'https://optimistic.etherscan.io',
-      'Aptos': 'https://explorer.aptoslabs.com'
+  const getExplorerUrl = (stepId: string, txHash: string) => {
+    // Determine chain based on step ID
+    switch (stepId) {
+      case 'src-escrow-created':
+      case 'funds-sent-to-wallet':
+        return `https://basescan.org/tx/${txHash}`; // Base network transactions
+      case 'dst-escrow-created':
+      case 'aptos-funds-claimed':
+        return `https://explorer.aptoslabs.com/txn/${txHash}?network=mainnet`; // Aptos network transactions
+      default:
+        return `https://basescan.org/tx/${txHash}`; // Default to Base
     }
-    
-    const baseUrl = chainExplorers[chain] || 'https://etherscan.io'
-    return `${baseUrl}/tx/${txHash}`
   }
 
   const isCompleted = steps.every(step => step.status === 'completed')
   const hasError = steps.some(step => step.status === 'failed')
 
+  // Auto-close dialog when completed or failed
+  useEffect(() => {
+    if (isCompleted || hasError) {
+      // Keep dialog open for a few seconds to show completion/failure
+      const timer = setTimeout(() => {
+        onOpenChange(false);
+      }, 30000); // 3 seconds delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isCompleted, hasError, onOpenChange]);
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog 
+      open={open} 
+      onOpenChange={(newOpen) => {
+        // Only allow closing if not processing or if completed/failed
+        if (!newOpen && isProcessing && !isCompleted && !hasError) {
+          return; // Prevent closing during processing
+        }
+        onOpenChange(newOpen);
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
-            {isCompleted ? 'Swap Completed!' : 
+            {isCompleted ? 'Swap Completed Successfully!' : 
              hasError ? 'Swap Failed' : 
-             isProcessing ? 'Processing Swap...' : 'Confirm Swap'}
+             isProcessing ? 'Processing Cross-Chain Swap...' : 'Confirm Swap'}
           </DialogTitle>
           <DialogDescription>
-            {isCompleted ? 'Your cross-chain swap has been successfully completed.' :
+            {isCompleted ? 'Your cross-chain swap has been successfully completed. All transactions have been processed.' :
              hasError ? 'There was an error processing your swap. Please try again.' :
-             isProcessing ? 'Please wait while we process your swap across multiple chains.' :
+             isProcessing ? 'Please wait while we process your swap across Base and Aptos networks. This may take a few minutes.' :
              `Swap ${fromAmount} ${fromToken?.symbol} on ${fromToken?.chain} for ${toAmount} ${toToken?.symbol} on ${toToken?.chain}`}
           </DialogDescription>
         </DialogHeader>
@@ -204,7 +233,7 @@ export function SwapProgressDialog({
           </div>
         )}
 
-        {isProcessing && (
+        {(isProcessing || isCompleted || hasError) && (
           <div className="space-y-4">
             <div className="space-y-3">
               {steps.map((step, index) => (
@@ -225,7 +254,7 @@ export function SwapProgressDialog({
                       </h4>
                       {step.transactionHash && (
                         <a
-                          href={getExplorerUrl(fromToken?.chain || 'Ethereum', step.transactionHash)}
+                          href={getExplorerUrl(step.id, step.transactionHash)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
@@ -264,7 +293,7 @@ export function SwapProgressDialog({
                 <div key={step.id} className="flex items-center justify-between text-xs">
                   <span className="text-gray-600">{step.title}:</span>
                   <a
-                    href={getExplorerUrl(fromToken?.chain || 'Ethereum', step.transactionHash!)}
+                    href={getExplorerUrl(step.id, step.transactionHash!)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 text-blue-600 hover:text-blue-800"

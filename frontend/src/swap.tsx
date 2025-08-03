@@ -10,6 +10,8 @@ import { useAptosWallet } from "@/lib/aptosWallet"
 import type { AptosTokenBalance } from "@/lib/aptosWallet"
 import { AptosWalletSelector } from "@/components/AptosWalletSelector"
 import { SwapProgressDialog } from "@/components/SwapProgressDialog"
+import { useRelayer } from "@/hooks/useRelayer"
+import { toast } from "sonner"
 
 export default function SwapComponent() {
   const {
@@ -28,20 +30,63 @@ export default function SwapComponent() {
 
   const [fromToken, setFromToken] = useState<TokenBalance | null>(null)
   const [toToken, setToToken] = useState<AptosTokenBalance | null>(null)
-  const [fromAmount, setFromAmount] = useState("0.00486")
+  const [fromAmount, setFromAmount] = useState("0.1")
   const [toAmount, setToAmount] = useState("0")
   const [activeTab, setActiveTab] = useState<"swap" | "limit">("swap")
   const [showFromDropdown, setShowFromDropdown] = useState(false)
   const [showToDropdown, setShowToDropdown] = useState(false)
   const [showSwapDialog, setShowSwapDialog] = useState(false)
+  const [transactionLinks, setTransactionLinks] = useState<{
+    srcEscrowDeployment?: string;
+    aptosEscrowFunding?: string;
+    aptosFundsClaiming?: string;
+    ethereumFundsWithdrawal?: string;
+  }>({})
 
   const fromDropdownRef = useRef<HTMLDivElement>(null)
   const toDropdownRef = useRef<HTMLDivElement>(null)
 
   const currentTokens = getCurrentChainTokens();
   const allTokens = getAllTokens();
+  
+  // Debug logging
+  console.log('Current tokens:', currentTokens);
+  console.log('Selected chain:', selectedChain);
+  console.log('Current chain config:', currentChainConfig);
   const { connected: aptosConnected, getAptosTokens, refreshBalances: refreshAptosBalances, isRefreshing: isAptosRefreshing } = useAptosWallet();
   const aptosTokens = getAptosTokens();
+  
+  // Relayer integration
+  const { 
+    createCrossChainOrder, 
+    loading: relayerLoading, 
+    error: relayerError,
+    isConnected: relayerConnected,
+    orders: relayerOrders,
+    currentOrder,
+    reconnect: reconnectRelayer
+  } = useRelayer();
+
+  // Update transaction links when current order stages change
+  useEffect(() => {
+    if (currentOrder?.stages) {
+      const links = {
+        srcEscrowDeployment: currentOrder.stages.srcEscrowCreated?.txHash 
+          ? `https://basescan.org/tx/${currentOrder.stages.srcEscrowCreated.txHash}` 
+          : undefined,
+        aptosEscrowFunding: currentOrder.stages.dstEscrowCreated?.txHash 
+          ? `https://explorer.aptoslabs.com/txn/${currentOrder.stages.dstEscrowCreated.txHash}?network=mainnet` 
+          : undefined,
+        aptosFundsClaiming: currentOrder.stages.aptosFundsClaimed?.txHash 
+          ? `https://explorer.aptoslabs.com/txn/${currentOrder.stages.aptosFundsClaimed.txHash}?network=mainnet` 
+          : undefined,
+        ethereumFundsWithdrawal: currentOrder.stages.fundsSentToWallet?.txHash 
+          ? `https://basescan.org/tx/${currentOrder.stages.fundsSentToWallet.txHash}` 
+          : undefined,
+      };
+      setTransactionLinks(links);
+    }
+  }, [currentOrder?.stages]);
 
   useEffect(() => {
     if (currentTokens.length > 0) {
@@ -91,20 +136,38 @@ export default function SwapComponent() {
   }
 
   const handleSwapConfirm = async () => {
-    // This is where the actual swap logic would go
-    // For now, we'll just simulate the process
-    console.log('Starting swap process...')
-    
-    // In a real implementation, you would:
-    // 1. Create source escrow
-    // 2. Deposit funds to source escrow
-    // 3. Create destination escrow
-    // 4. Deposit funds to destination escrow
-    // 5. Share secrets between chains
-    // 6. Complete the swap
-    
-    // For demo purposes, we'll just wait a bit
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    try {
+      if (!fromToken || !toToken || !fromAmount || !toAmount) {
+        toast.error('Missing required swap parameters');
+        return;
+      }
+
+      console.log('Starting cross-chain swap process...');
+      
+      // Create cross-chain order
+      const orderData = {
+        fromToken: fromToken.address,
+        toToken: toToken.address,
+        fromAmount: fromAmount,
+        toAmount: toAmount,
+        fromChainId: selectedChain ? parseInt(selectedChain) : 8453, // Default to Base
+        toChainId: 2, // Aptos chain ID
+      };
+
+      const result = await createCrossChainOrder(orderData);
+      
+      toast.success(`Swap order submitted! Order Hash: ${result.orderHash}`);
+      
+      // Don't close the dialog - let it stay open to show progress
+      // The dialog will close automatically when the swap is completed or failed
+      // based on the currentOrder status updates from WebSocket
+      
+    } catch (error) {
+      console.error('Swap failed:', error);
+      toast.error(`Swap failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Close dialog on error
+      setShowSwapDialog(false);
+    }
   }
 
   const handleFromAmountChange = (value: string) => {
@@ -140,23 +203,27 @@ export default function SwapComponent() {
     }
   }
 
-  const handleChainSwitch = async (chainId: string) => {
-    const chainConfig = chains.find(chain => chain.id === chainId);
-    if (chainConfig) {
-      setSelectedChain(chainId);
-      await switchToChain(chainConfig.chainId);
+  const handleRefresh = async () => {
+    try {
+      console.log('Refreshing balances and reconnecting relayer...');
+      
+      // Refresh balances for both chains
+      await Promise.all([
+        refreshEthBalances(),
+        refreshAptosBalances(),
+      ]);
+      
+      // Disconnect and reconnect the relayer server
+      await reconnectRelayer();
+      
+      console.log('Refresh completed successfully');
+    } catch (error) {
+      console.error('Error during refresh:', error);
+      toast.error('Failed to refresh. Please try again.');
     }
   }
 
-  const handleRefresh = async () => {
-    // Refresh balances for both chains
-    await Promise.all([
-      refreshEthBalances(),
-      refreshAptosBalances(),
-    ]);
-  }
-
-  const isSwapDisabled = !isConnected || !aptosConnected || !fromAmount || Number.parseFloat(fromAmount) <= 0.001 || !fromToken || !toToken
+  const isSwapDisabled = !isConnected || !aptosConnected || !fromAmount || Number.parseFloat(fromAmount) <= 0.01 || !fromToken || !toToken || relayerLoading || !relayerConnected
 
   if (!isConnected) {
     return (
@@ -232,6 +299,12 @@ export default function SwapComponent() {
               </Button>
             </div>
             <div className="flex items-center gap-1">
+              {/* Relayer Status Indicator */}
+              <div className={cn(
+                "w-2 h-2 rounded-full mr-2",
+                relayerConnected ? "bg-green-500" : "bg-red-500"
+              )} title={relayerConnected ? "Relayer Connected" : "Relayer Disconnected"} />
+              
               <Button
                 variant="ghost"
                 size="sm"
@@ -251,6 +324,94 @@ export default function SwapComponent() {
             </div>
           </div>
         </CardHeader>
+
+        {/* Relayer Error Display */}
+        {relayerError && (
+          <div className="px-6 pb-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                <span className="text-sm text-red-700 font-medium">Relayer Error</span>
+              </div>
+              <p className="text-sm text-red-600 mt-1">{relayerError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Swap Progress Display */}
+        {currentOrder && (
+          <div className="px-6 pb-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm text-green-700 font-medium">Swap Progress</span>
+              </div>
+              <div className="text-xs text-green-600">
+                {currentOrder.status === 'pending' && '🔄 Initializing swap...'}
+                {currentOrder.status === 'src_escrow_created' && '✅ Source escrow deployed on Base'}
+                {currentOrder.status === 'dst_escrow_created' && '✅ Aptos escrow funded'}
+                {currentOrder.status === 'security_check_completed' && '✅ Security time locks completed'}
+                {currentOrder.status === 'aptos_funds_claimed' && '✅ Funds claimed on Aptos'}
+                {currentOrder.status === 'funds_sent_to_wallet' && '✅ Swap completed! Funds withdrawn from Base'}
+                {currentOrder.status === 'cancelled' && '❌ Swap cancelled'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transaction Links Display */}
+        {currentOrder && Object.values(transactionLinks).some(link => link) && (
+          <div className="px-6 pb-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm text-blue-700 font-medium">Transaction Links</span>
+              </div>
+              <div className="space-y-1">
+                {transactionLinks.srcEscrowDeployment && (
+                  <a 
+                    href={transactionLinks.srcEscrowDeployment} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    🔗 Source Escrow Deployment (Base)
+                  </a>
+                )}
+                {transactionLinks.aptosEscrowFunding && (
+                  <a 
+                    href={transactionLinks.aptosEscrowFunding} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    🔗 Aptos Escrow Funding
+                  </a>
+                )}
+                {transactionLinks.aptosFundsClaiming && (
+                  <a 
+                    href={transactionLinks.aptosFundsClaiming} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    🔗 Aptos Funds Claiming
+                  </a>
+                  )}
+                {transactionLinks.ethereumFundsWithdrawal && (
+                  <a 
+                    href={transactionLinks.ethereumFundsWithdrawal} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    🔗 Base Funds Withdrawal
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <CardContent className="space-y-1 px-6 pb-6">
           {/* From Token */}
@@ -323,7 +484,7 @@ export default function SwapComponent() {
                   className="text-right text-2xl font-medium bg-transparent border-none p-0 h-auto focus-visible:ring-0 text-gray-900 w-32"
                   placeholder="0"
                 />
-                <div className="text-xs text-gray-500 mt-1">~$0.00048{fromAmount.slice(7)}</div>
+                <div className="text-xs text-gray-500 mt-1">~${(parseFloat(fromAmount || "0") * 1).toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -428,10 +589,12 @@ export default function SwapComponent() {
             {isSwapDisabled ? (
               !isConnected ? "Connect Wallet" : 
               !aptosConnected ? "Connect Aptos Wallet" :
+              !relayerConnected ? "Relayer Disconnected" :
               !fromToken || !toToken ? "Select tokens" :
-              "Swap amount for Cross-chain is too small."
+              relayerLoading ? "Processing..." :
+              "Swap amount must be at least 0.01 USDC."
             ) : (
-              "Swap"
+              relayerLoading ? "Processing..." : "Swap"
             )}
           </Button>
         </CardContent>
@@ -440,12 +603,19 @@ export default function SwapComponent() {
       {/* Swap Progress Dialog */}
       <SwapProgressDialog
         open={showSwapDialog}
-        onOpenChange={setShowSwapDialog}
+        onOpenChange={(open) => {
+          setShowSwapDialog(open);
+          // Reset current order when dialog is closed
+          if (!open) {
+            // The currentOrder will be reset by the relayer hook when needed
+          }
+        }}
         fromToken={fromToken}
         toToken={toToken}
         fromAmount={fromAmount}
         toAmount={toAmount}
         onConfirm={handleSwapConfirm}
+        currentOrder={currentOrder}
       />
     </div>
   )
