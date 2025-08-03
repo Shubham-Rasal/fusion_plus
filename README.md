@@ -13,6 +13,9 @@ Aptos implementation of the 1inch Fusion+ protocol for cross-chain atomic swaps 
 ![Swap Success](docs/success.png)
 *Successfully completed cross-chain swap with transaction details*
 
+![Architecture](docs/arch.png)
+*Aptos Implementation*
+
 ## Overview
 
 The protocol uses hash-time-locked contracts (HTLC) with escrow accounts to enable secure cross-chain token swaps.
@@ -77,21 +80,36 @@ await claim_funds(orderId, ethers.toUtf8Bytes(secret));
 await cancel_swap(orderId);
 ```
 
-## Testing
+# Fusion+ Protocol - Sui Implementation
 
-```bash
-npm test
-```
+## Sui Setup
 
-## Key Data Structures
+For local testing:
 
-- [`OrderMetadata`](aptos/sources/fusion_swap.move#L39-L48): Order metadata with escrow details and secret hash
-- [`SwapLedger`](aptos/sources/fusion_swap.move#L54-L55): Global ledger managing all swap orders
-- [`ensure_escrow_and_register`](aptos/sources/fusion_swap.move#L284-L315): Helper function for escrow creation
+1. **Start a Sui node:**
+   ```bash
+   RUST_LOG="off,sui_node=info" sui start --with-faucet --force-regenesis
+   ```
 
-## Security
+2. **Install dependencies for testing:**
+   ```bash
+   npm install ts-node @mysten/sui dotenv
+   ```
 
-- HTLC with secret hashes and timeouts
-- Resource accounts for secure escrow management
-- Keccak256 hash verification
-- Automatic expiration mechanism
+- [Reference: How to use the Sui TypeScript SDK](https://dev.to/goodylili/how-to-use-the-sui-typescript-sdk-2dep)
+
+## Implementation Overview
+
+1. **EVM Chain (Chain A):**
+   - Alice creates an escrow account, deposits tokens, and locks them on Chain A.
+   - _Note: This step is not handled by Sui._
+
+2. **Sui Chain (Chain B):**
+   - Bob creates an escrow account on Chain B and locks tokens there.
+   - This is performed by the `createEscrow` function, managed by the resolver.
+
+3. **Claiming Tokens:**
+   - After the escrow account is created on Chain B, the resolver claims the tokens on behalf of Alice.
+   - Subsequently, Bob can claim the tokens on Chain A.
+
+This flow ensures atomic swaps between EVM and Sui chains, with the resolver coordinating the escrow and claim processes.

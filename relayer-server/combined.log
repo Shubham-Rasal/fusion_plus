@@ -639,3 +639,9 @@
 {"level":"info","message":"New WebSocket client connected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:16:44.941Z"}
 {"ip":"::1","level":"info","message":"POST /order","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:21:27.493Z","userAgent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"}
 {"chainId":8453,"level":"info","message":"Received order request:","orderData":{"fromAmount":"0.1","fromChainId":null,"fromToken":"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913","toAmount":"0","toChainId":2,"toToken":"0x1::aptos_coin::AptosCoin"},"service":"fusion-plus-relayer","timestamp":"2025-08-03T11:21:27.493Z","userAddress":"0xCE01B8865C6144A745473DE26ad35A2483Dd54eC"}
+{"level":"info","message":"WebSocket client disconnected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:51.167Z"}
+{"level":"info","message":"WebSocket client disconnected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:51.168Z"}
+{"level":"info","message":"New WebSocket client connected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:52.920Z"}
+{"level":"info","message":"New WebSocket client connected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:52.985Z"}
+{"level":"info","message":"WebSocket client disconnected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:53.269Z"}
+{"level":"info","message":"New WebSocket client connected","service":"fusion-plus-relayer","timestamp":"2025-08-03T11:37:58.934Z"}
